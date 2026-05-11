@@ -32,7 +32,7 @@ const { useState, useEffect, useRef } = React;
 const CLIENT_ID = "207797886630-2vkpacgf5s140gpjmd54bd09fo25k1m4.apps.googleusercontent.com";
 const FOLDER_ID = "1AdjewXblVuXicN5KBln2PVd91omyP2lk";
 const DATA_FILE = "activity_records.json";
-const SCOPES    = "https://www.googleapis.com/auth/drive";
+const SCOPES    = "https://www.googleapis.com/auth/drive.file";
 // ─────────────────────────────────────────────────
 
 const ACTIVITY_TYPES = [
@@ -120,7 +120,9 @@ async function loadFromDrive() {
   return { records: Array.isArray(records) ? records : [], fileId };
 }
 async function loadPublic(fileId) {
-  const res = await fetch(`https://drive.google.com/uc?export=download&id=${fileId}`);
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${API_KEY}`
+  );
   if (!res.ok) throw new Error("無法讀取");
   return res.json();
 }
