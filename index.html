@@ -30,9 +30,10 @@ const { useState, useEffect, useRef } = React;
 
 // ── 設定 ──────────────────────────────────────────
 const CLIENT_ID = "207797886630-2vkpacgf5s140gpjmd54bd09fo25k1m4.apps.googleusercontent.com";
+const API_KEY   = "AIzaSyDyIK8v5W9QMmdZg_lotj7W8n-dt7QAvH0";
 const FOLDER_ID = "1AdjewXblVuXicN5KBln2PVd91omyP2lk";
 const DATA_FILE = "activity_records.json";
-const SCOPES    = "https://www.googleapis.com/auth/drive.file";
+const SCOPES    = "https://www.googleapis.com/auth/drive";
 // ─────────────────────────────────────────────────
 
 const ACTIVITY_TYPES = [
@@ -86,7 +87,9 @@ async function driveSaveJson(content, existingId) {
     const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
       method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: fm,
     });
-    fileId = (await res.json()).id;
+    const json = await res.json();
+    console.log("建立檔案回應：", json);
+    fileId = json.id;
   }
   // 設為公開可讀
   await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
@@ -104,7 +107,9 @@ async function driveUploadImage(file) {
   const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
     method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: fm,
   });
-  const fileId = (await res.json()).id;
+  const json = await res.json();
+  console.log("上傳圖片回應：", json);
+  const fileId = json.id;
   await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type":"application/json" },
@@ -123,7 +128,7 @@ async function loadPublic(fileId) {
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${API_KEY}`
   );
-  if (!res.ok) throw new Error("無法讀取");
+  if (!res.ok) throw new Error("無法讀取公開資料");
   return res.json();
 }
 function getCachedFileId() { try { return localStorage.getItem("act_json_fid"); } catch { return null; } }
@@ -162,22 +167,22 @@ const s = {
   filterBtn: (a) => ({ fontSize:13, padding:"5px 14px", borderRadius:99, border:"0.5px solid #ccc", background:a?"#1a1a1a":"transparent", color:a?"#fff":"#666", cursor:"pointer", marginBottom:4 }),
   thumb:     { width:"100%", aspectRatio:"1", objectFit:"cover", display:"block", borderRadius:8, cursor:"pointer" },
   grid:      { display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))", gap:8, marginTop:12 },
-  detailLbl: { fontSize:14, fontWeight:600, color:"#444", marginBottom:6, background:"#e8e8e4", display:"inline-block", padding:"2px 10px", borderRadius:6 },
+  detailLbl: { fontSize:14, fontWeight:600, color:"#444", background:"#e8e8e4", display:"inline-block", padding:"2px 10px", borderRadius:6 },
 };
 
 function App() {
-  const [records,    setRecords]    = useState([]);
-  const [dataFileId, setDataFileId] = useState(null);
-  const [isAdmin,    setIsAdmin]    = useState(false);
-  const [view,       setView]       = useState("list");
-  const [selected,   setSelected]   = useState(null);
-  const [form,       setForm]       = useState(defaultForm);
-  const [filter,     setFilter]     = useState("all");
-  const [sortOrder,  setSortOrder]  = useState("desc");
-  const [lightbox,   setLightbox]   = useState(null);
-  const [addMediaUrl,setAddMediaUrl]= useState("");
-  const [uploading,  setUploading]  = useState(false);
-  const [status,     setStatus]     = useState("");
+  const [records,     setRecords]     = useState([]);
+  const [dataFileId,  setDataFileId]  = useState(null);
+  const [isAdmin,     setIsAdmin]     = useState(false);
+  const [view,        setView]        = useState("list");
+  const [selected,    setSelected]    = useState(null);
+  const [form,        setForm]        = useState(defaultForm);
+  const [filter,      setFilter]      = useState("all");
+  const [sortOrder,   setSortOrder]   = useState("desc");
+  const [lightbox,    setLightbox]    = useState(null);
+  const [addMediaUrl, setAddMediaUrl] = useState("");
+  const [uploading,   setUploading]   = useState(false);
+  const [status,      setStatus]      = useState("");
   const fileRef  = useRef();
   const coverRef = useRef();
 
@@ -187,8 +192,8 @@ function App() {
     setStatus("載入中...");
     loadPublic(fid)
       .then(r => { setRecords(Array.isArray(r)?r:[]); setDataFileId(fid); })
-      .catch(()=>{})
-      .finally(()=>setStatus(""));
+      .catch(e => console.log("公開讀取失敗：", e))
+      .finally(() => setStatus(""));
   }, []);
 
   const reloadFromDrive = async () => {
@@ -319,38 +324,37 @@ function App() {
     return (
       <div style={s.wrap}>
         <TopBar title={records.find(r=>r.id===form.id)?"編輯紀錄":"新增紀錄"} backFn={()=>setView("list")} />
-
         <div style={s.field}>
-          <label style={s.label}>標題 *</label>
+          <label style={s.label}>標題 *</label><br/>
           <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="例：雪山主峰" />
         </div>
         <div style={s.field}>
-          <label style={s.label}>地點</label>
+          <label style={s.label}>地點</label><br/>
           <input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="例：苗栗縣" />
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:20 }}>
           <div>
-            <label style={s.label}>開始日期 *</label>
+            <label style={s.label}>開始日期 *</label><br/>
             <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} />
           </div>
           <div>
-            <label style={s.label}>結束日期</label>
+            <label style={s.label}>結束日期</label><br/>
             <input type="date" value={form.endDate||""} min={form.date||""} onChange={e=>setForm({...form,endDate:e.target.value})} />
           </div>
           <div>
-            <label style={s.label}>活動類型</label>
+            <label style={s.label}>活動類型</label><br/>
             <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
               {ACTIVITY_TYPES.map(t=><option key={t.key} value={t.key}>{t.icon} {t.label}</option>)}
             </select>
           </div>
         </div>
         <div style={s.field}>
-          <label style={s.label}>同行人員</label>
+          <label style={s.label}>同行人員</label><br/>
           <input value={form.companions||""} onChange={e=>setForm({...form,companions:e.target.value})} placeholder="例：小明、小華、阿偉" />
         </div>
         <div style={s.field}>
-          <label style={s.label}>封面圖片</label>
-          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <label style={s.label}>封面圖片</label><br/>
+          <div style={{ display:"flex", gap:8, alignItems:"center", marginTop:4 }}>
             <input value={form.imageUrl} onChange={e=>setForm({...form,imageUrl:e.target.value})} placeholder="貼上網址，或上傳到 Google Drive" />
             <button onClick={()=>coverRef.current.click()} disabled={uploading}>上傳</button>
           </div>
@@ -382,16 +386,16 @@ function App() {
           )}
         </div>
         <div style={s.field}>
-          <label style={s.label}>路線</label>
-          <textarea style={{ height:80, resize:"vertical" }} value={form.route} onChange={e=>setForm({...form,route:e.target.value})} placeholder="描述行走路線或交通方式..." />
+          <label style={s.label}>路線</label><br/>
+          <textarea style={{ height:80, resize:"vertical", marginTop:4 }} value={form.route} onChange={e=>setForm({...form,route:e.target.value})} placeholder="描述行走路線或交通方式..." />
         </div>
         <div style={s.field}>
-          <label style={s.label}>心得</label>
-          <textarea style={{ height:100, resize:"vertical" }} value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="分享這次活動的感受..." />
+          <label style={s.label}>心得</label><br/>
+          <textarea style={{ height:100, resize:"vertical", marginTop:4 }} value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="分享這次活動的感受..." />
         </div>
         <div style={s.field}>
-          <label style={s.label}>標籤（逗號分隔）</label>
-          <input value={form.tags} onChange={e=>setForm({...form,tags:e.target.value})} placeholder="例：百岳, 三千米, 夜宿山屋" />
+          <label style={s.label}>標籤（逗號分隔）</label><br/>
+          <input style={{ marginTop:4 }} value={form.tags} onChange={e=>setForm({...form,tags:e.target.value})} placeholder="例：百岳, 三千米, 夜宿山屋" />
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="primary" onClick={submitForm} disabled={!!status}>儲存</button>
