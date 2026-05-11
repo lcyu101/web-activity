@@ -1,0 +1,8 @@
+# 忽略名為 "old" 的子目錄
+old/
+
+# 忽略 Python 的虛擬環境（這強烈建議加入）
+venv/
+
+# 忽略 macOS 系統產生的縮圖檔
+.DS_Store
