@@ -28,13 +28,13 @@
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 
-// ── 設定 ──────────────────────────────────────────
-const CLIENT_ID = "207797886630-2vkpacgf5s140gpjmd54bd09fo25k1m4.apps.googleusercontent.com";
-const API_KEY   = "AIzaSyDyIK8v5W9QMmdZg_lotj7W8n-dt7QAvH0";
-const FOLDER_ID = "1AdjewXblVuXicN5KBln2PVd91omyP2lk";
-const DATA_FILE = "activity_records.json";
-const DEFAULT_FILE_ID = "1YDoyv3VWYA_pHw1ZDEJYjtzcfyoUcnH_";
-// ─────────────────────────────────────────────────
+const CLIENT_ID      = "207797886630-2vkpacgf5s140gpjmd54bd09fo25k1m4.apps.googleusercontent.com";
+const API_KEY        = "AIzaSyDyIK8v5W9QMmdZg_lotj7W8n-dt7QAvH0";
+const FOLDER_ID      = "1AdjewXblVuXicN5KBln2PVd91omyP2lk";
+const DATA_FILE      = "activity_records.json";
+const DEFAULT_FILE_ID= "1YDoyv3VWYA_pHw1ZDEJYjtzcfyoUcnH_";
+const SCOPES         = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email";
+const ADMIN_EMAILS   = ["lin9680@gmail.com","hng937@gmail.com","grace569888@gmail.com"];
 
 const ACTIVITY_TYPES = [
   { key:"hiking",  label:"登山", icon:"▲" },
@@ -52,7 +52,6 @@ const defaultForm = {
   companions:"", route:"", note:"", tags:"", imageUrl:"", mediaItems:[],
 };
 
-// ── Drive API ──────────────────────────────────────
 let accessToken = null;
 
 async function driveGet(fileId) {
@@ -75,44 +74,33 @@ async function driveSaveJson(content, existingId) {
   let fileId = existingId;
   if (existingId) {
     await fetch(`https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type":"application/json" },
-      body: blob,
+      method:"PATCH", headers:{ Authorization:`Bearer ${accessToken}`, "Content-Type":"application/json" }, body:blob,
     });
   } else {
-    const meta = { name: DATA_FILE, parents: [FOLDER_ID] };
     const fm = new FormData();
-    fm.append("metadata", new Blob([JSON.stringify(meta)], { type:"application/json" }));
+    fm.append("metadata", new Blob([JSON.stringify({ name:DATA_FILE, parents:[FOLDER_ID] })], { type:"application/json" }));
     fm.append("file", blob);
     const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
-      method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: fm,
+      method:"POST", headers:{ Authorization:`Bearer ${accessToken}` }, body:fm,
     });
-    const json = await res.json();
-    console.log("建立檔案回應：", json);
-    fileId = json.id;
+    fileId = (await res.json()).id;
   }
-  // 設為公開可讀
   await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type":"application/json" },
+    method:"POST", headers:{ Authorization:`Bearer ${accessToken}`, "Content-Type":"application/json" },
     body: JSON.stringify({ role:"reader", type:"anyone" }),
   }).catch(()=>{});
   return fileId;
 }
 async function driveUploadImage(file) {
-  const meta = { name: file.name, parents: [FOLDER_ID] };
   const fm = new FormData();
-  fm.append("metadata", new Blob([JSON.stringify(meta)], { type:"application/json" }));
+  fm.append("metadata", new Blob([JSON.stringify({ name:file.name, parents:[FOLDER_ID] })], { type:"application/json" }));
   fm.append("file", file);
   const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
-    method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: fm,
+    method:"POST", headers:{ Authorization:`Bearer ${accessToken}` }, body:fm,
   });
-  const json = await res.json();
-  console.log("上傳圖片回應：", json);
-  const fileId = json.id;
+  const fileId = (await res.json()).id;
   await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type":"application/json" },
+    method:"POST", headers:{ Authorization:`Bearer ${accessToken}`, "Content-Type":"application/json" },
     body: JSON.stringify({ role:"reader", type:"anyone" }),
   });
   return `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
@@ -122,23 +110,20 @@ async function loadFromDrive() {
   if (!files.length) return { records:[], fileId:null };
   const fileId = files[0].id;
   const records = await driveGet(fileId);
-  return { records: Array.isArray(records) ? records : [], fileId };
+  return { records:Array.isArray(records)?records:[], fileId };
 }
 async function loadPublic(fileId) {
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${API_KEY}`
-  );
-  if (!res.ok) throw new Error("無法讀取公開資料");
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${API_KEY}`);
+  if (!res.ok) throw new Error("無法讀取");
   return res.json();
 }
 function getCachedFileId() { try { return localStorage.getItem("act_json_fid"); } catch { return null; } }
 function setCachedFileId(id) { try { localStorage.setItem("act_json_fid", id); } catch {} }
-// ─────────────────────────────────────────────────
 
 function formatDate(date, endDate) {
   if (!date) return "";
-  if (!endDate || endDate === date) return date;
-  const days = Math.round((new Date(endDate) - new Date(date)) / 86400000) + 1;
+  if (!endDate || endDate===date) return date;
+  const days = Math.round((new Date(endDate)-new Date(date))/86400000)+1;
   return `${date} ～ ${endDate}（${days} 天）`;
 }
 function getVideoEmbed(url) {
@@ -152,9 +137,8 @@ function getVideoThumb(url) {
   const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
   return yt ? `https://img.youtube.com/vi/${yt[1]}/mqdefault.jpg` : null;
 }
-
 function TypeBadge({ type }) {
-  const t = ACTIVITY_TYPES.find(a=>a.key===type) || ACTIVITY_TYPES[5];
+  const t = ACTIVITY_TYPES.find(a=>a.key===type)||ACTIVITY_TYPES[5];
   return <span style={{ fontSize:12, padding:"2px 10px", borderRadius:99, background:BG_COLORS[type]||"#F1EFE8", color:COLORS[type]||"#5F5E5A", fontWeight:500 }}>{t.icon} {t.label}</span>;
 }
 
@@ -212,7 +196,6 @@ function App() {
       callback: async (resp) => {
         if (resp.error) { alert("登入失敗："+resp.error); return; }
         accessToken = resp.access_token;
-        // 驗證帳號是否在白名單內
         try {
           const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
             headers: { Authorization: `Bearer ${accessToken}` }
@@ -295,7 +278,6 @@ function App() {
       ? (b.date||"").localeCompare(a.date||"")
       : (a.date||"").localeCompare(b.date||""));
 
-  // Lightbox
   if (lightbox) {
     const { items, idx } = lightbox;
     const cur = items[idx];
@@ -317,7 +299,6 @@ function App() {
     );
   }
 
-  // TopBar
   const TopBar = ({ title, backFn }) => (
     <div>
       {backFn && <span style={s.back} onClick={backFn}>← 返回</span>}
@@ -334,7 +315,6 @@ function App() {
     </div>
   );
 
-  // Edit
   if (view==="edit") {
     const media = form.mediaItems||[];
     return (
@@ -421,7 +401,6 @@ function App() {
     );
   }
 
-  // Detail
   if (view==="detail" && selected) {
     const media = selected.mediaItems||[];
     return (
@@ -471,17 +450,10 @@ function App() {
     );
   }
 
-  // List
   return (
     <div style={s.wrap}>
       <TopBar title="我的活動紀錄" />
       {isAdmin && <button className="primary" onClick={openNew} style={{ marginBottom:"1.5rem" }}>＋ 新增</button>}
-      {!isAdmin && records.length===0 && (
-        <div style={{ textAlign:"center", padding:"2rem", background:"#fff", borderRadius:12, marginBottom:"1.5rem", border:"0.5px solid #eee" }}>
-          <p style={{ color:"#888", marginBottom:12 }}>請以管理者身份登入來載入並管理紀錄</p>
-          <button onClick={handleAdminLogin}>管理者登入</button>
-        </div>
-      )}
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:"0.75rem", alignItems:"center" }}>
         <button style={s.filterBtn(filter==="all")} onClick={()=>setFilter("all")}>全部（{records.length}）</button>
         {ACTIVITY_TYPES.map(t=>{ const c=records.filter(r=>r.type===t.key).length; return c>0&&<button key={t.key} style={s.filterBtn(filter===t.key)} onClick={()=>setFilter(t.key)}>{t.icon} {t.label}（{c}）</button>; })}
