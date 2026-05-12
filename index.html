@@ -207,10 +207,26 @@ function App() {
 
   const handleAdminLogin = () => {
     const client = google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID, scope: SCOPES,
+      client_id: CLIENT_ID, scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
       callback: async (resp) => {
         if (resp.error) { alert("登入失敗："+resp.error); return; }
         accessToken = resp.access_token;
+        // 驗證帳號是否在白名單內
+        try {
+          const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          });
+          const info = await res.json();
+          if (!ADMIN_EMAILS.includes(info.email)) {
+            alert(`帳號 ${info.email} 沒有管理者權限`);
+            accessToken = null;
+            return;
+          }
+        } catch(e) {
+          alert("無法驗證帳號，請稍後再試");
+          accessToken = null;
+          return;
+        }
         setIsAdmin(true);
         await reloadFromDrive();
       },
