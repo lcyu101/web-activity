@@ -33,7 +33,7 @@ const CLIENT_ID = "207797886630-2vkpacgf5s140gpjmd54bd09fo25k1m4.apps.googleuser
 const API_KEY   = "AIzaSyDyIK8v5W9QMmdZg_lotj7W8n-dt7QAvH0";
 const FOLDER_ID = "1AdjewXblVuXicN5KBln2PVd91omyP2lk";
 const DATA_FILE = "activity_records.json";
-const SCOPES    = "https://www.googleapis.com/auth/drive";
+const DEFAULT_FILE_ID = "1YDoyv3VWYA_pHw1ZDEJYjtzcfyoUcnH_";
 // ─────────────────────────────────────────────────
 
 const ACTIVITY_TYPES = [
@@ -187,8 +187,7 @@ function App() {
   const coverRef = useRef();
 
   useEffect(() => {
-    const fid = getCachedFileId();
-    if (!fid) return;
+    const fid = getCachedFileId() || DEFAULT_FILE_ID;
     setStatus("載入中...");
     loadPublic(fid)
       .then(r => { setRecords(Array.isArray(r)?r:[]); setDataFileId(fid); })
