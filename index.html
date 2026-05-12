@@ -268,7 +268,18 @@ function App() {
     catch(err) { alert("上傳失敗："+err.message); }
     setUploading(false);
   };
-  const removeMedia = (idx) => setForm(f=>({...f, mediaItems:f.mediaItems.filter((_,i)=>i!==idx)}));
+  const dragIdx = useRef(null);
+
+  const onDragStart = (i) => { dragIdx.current = i; };
+  const onDragOver  = (e) => { e.preventDefault(); };
+  const onDrop      = (i) => {
+    if (dragIdx.current === null || dragIdx.current === i) return;
+    const items = [...form.mediaItems];
+    const dragged = items.splice(dragIdx.current, 1)[0];
+    items.splice(i, 0, dragged);
+    setForm(f => ({...f, mediaItems: items}));
+    dragIdx.current = null;
+  };
 
   const years = [...new Set(records.map(r=>r.date?.slice(0,4)).filter(Boolean))].sort((a,b)=>b-a);
   const filtered = (filter==="all" ? records
@@ -372,9 +383,14 @@ function App() {
           {media.length>0 && (
             <div style={s.grid}>
               {media.map((m,i)=>(
-                <div key={i} style={{ position:"relative" }}>
+                <div key={i} style={{ position:"relative", opacity: dragIdx.current===i ? 0.4 : 1, cursor:"grab" }}
+                  draggable
+                  onDragStart={()=>onDragStart(i)}
+                  onDragOver={onDragOver}
+                  onDrop={()=>onDrop(i)}>
                   <img src={m.thumb||m.url} style={s.thumb} alt="" />
                   {m.type==="video" && <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.35)", borderRadius:8 }}><span style={{ fontSize:24, color:"#fff" }}>▶</span></div>}
+                  <div style={{ position:"absolute", top:4, left:4, background:"rgba(0,0,0,0.5)", color:"#fff", fontSize:11, borderRadius:4, padding:"1px 5px" }}>{i+1}</div>
                   <button onClick={()=>removeMedia(i)} style={{ position:"absolute", top:4, right:4, width:22, height:22, borderRadius:"50%", background:"rgba(0,0,0,0.6)", color:"#fff", border:"none", fontSize:13, lineHeight:"22px", textAlign:"center", padding:0 }}>×</button>
                 </div>
               ))}
