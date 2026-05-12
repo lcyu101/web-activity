@@ -207,7 +207,8 @@ function App() {
 
   const handleAdminLogin = () => {
     const client = google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID, scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
+      client_id: CLIENT_ID,
+      scope: SCOPES,
       callback: async (resp) => {
         if (resp.error) { alert("登入失敗："+resp.error); return; }
         accessToken = resp.access_token;
