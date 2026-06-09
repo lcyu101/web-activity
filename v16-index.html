@@ -28,13 +28,12 @@
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 
-const CLIENT_ID       = "207797886630-2vkpacgf5s140gpjmd54bd09fo25k1m4.apps.googleusercontent.com";
-const API_KEY         = "AIzaSyDyIK8v5W9QMmdZg_lotj7W8n-dt7QAvH0";
-const FOLDER_ID       = "1AdjewXblVuXicN5KBln2PVd91omyP2lk";
-const DATA_FILE       = "activity_records.json";
-const DEFAULT_FILE_ID = "1YDoyv3VWYA_pHw1ZDEJYjtzcfyoUcnH_";
-const SCOPES          = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email";
-const ADMIN_EMAILS    = ["lin9680@gmail.com","hng937@gmail.com","grace569888@gmail.com","lcyu@as.edu.tw"];
+// ── 設定 ──────────────────────────────────────────
+const CLIENT_ID = "207797886630-2vkpacgf5s140gpjmd54bd09fo25k1m4.apps.googleusercontent.com";
+const FOLDER_ID = "1AdjewXblVuXicN5KBln2PVd91omyP2lk";
+const DATA_FILE = "activity_records.json";
+const SCOPES    = "https://www.googleapis.com/auth/drive";
+// ─────────────────────────────────────────────────
 
 const ACTIVITY_TYPES = [
   { key:"hiking",  label:"登山", icon:"▲" },
@@ -46,53 +45,70 @@ const ACTIVITY_TYPES = [
 ];
 const COLORS    = { hiking:"#3B6D11", travel:"#185FA5", cycling:"#BA7517", diving:"#0F6E56", running:"#993556", other:"#533489" };
 const BG_COLORS = { hiking:"#EAF3DE", travel:"#E6F1FB", cycling:"#FAEEDA", diving:"#E1F5EE", running:"#FBEAF0", other:"#EEEDFE" };
-const defaultForm = { id:null, title:"", date:"", endDate:"", location:"", type:"hiking", companions:"", route:"", note:"", tags:"", imageUrl:"", mediaItems:[] };
 
+const defaultForm = {
+  id:null, title:"", date:"", endDate:"", location:"", type:"hiking",
+  companions:"", route:"", note:"", tags:"", imageUrl:"", mediaItems:[],
+};
+
+// ── Drive API ──────────────────────────────────────
 let accessToken = null;
 
 async function driveGet(fileId) {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers:{ Authorization:`Bearer ${accessToken}` } });
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
   if (!res.ok) throw new Error("讀取失敗");
   return res.json();
 }
 async function driveList(name) {
   const q = encodeURIComponent(`name='${name}' and '${FOLDER_ID}' in parents and trashed=false`);
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, { headers:{ Authorization:`Bearer ${accessToken}` } });
-  return (await res.json()).files || [];
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const data = await res.json();
+  return data.files || [];
 }
 async function driveSaveJson(content, existingId) {
   const blob = new Blob([JSON.stringify(content)], { type:"application/json" });
   let fileId = existingId;
   if (existingId) {
     await fetch(`https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media`, {
-      method:"PATCH", headers:{ Authorization:`Bearer ${accessToken}`, "Content-Type":"application/json" }, body:blob,
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type":"application/json" },
+      body: blob,
     });
   } else {
+    const meta = { name: DATA_FILE, parents: [FOLDER_ID] };
     const fm = new FormData();
-    fm.append("metadata", new Blob([JSON.stringify({ name:DATA_FILE, parents:[FOLDER_ID] })], { type:"application/json" }));
+    fm.append("metadata", new Blob([JSON.stringify(meta)], { type:"application/json" }));
     fm.append("file", blob);
     const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
-      method:"POST", headers:{ Authorization:`Bearer ${accessToken}` }, body:fm,
+      method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: fm,
     });
     fileId = (await res.json()).id;
   }
+  // 設為公開可讀
   await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
-    method:"POST", headers:{ Authorization:`Bearer ${accessToken}`, "Content-Type":"application/json" },
-    body:JSON.stringify({ role:"reader", type:"anyone" }),
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type":"application/json" },
+    body: JSON.stringify({ role:"reader", type:"anyone" }),
   }).catch(()=>{});
   return fileId;
 }
 async function driveUploadImage(file) {
+  const meta = { name: file.name, parents: [FOLDER_ID] };
   const fm = new FormData();
-  fm.append("metadata", new Blob([JSON.stringify({ name:file.name, parents:[FOLDER_ID] })], { type:"application/json" }));
+  fm.append("metadata", new Blob([JSON.stringify(meta)], { type:"application/json" }));
   fm.append("file", file);
   const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
-    method:"POST", headers:{ Authorization:`Bearer ${accessToken}` }, body:fm,
+    method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: fm,
   });
   const fileId = (await res.json()).id;
   await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
-    method:"POST", headers:{ Authorization:`Bearer ${accessToken}`, "Content-Type":"application/json" },
-    body:JSON.stringify({ role:"reader", type:"anyone" }),
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type":"application/json" },
+    body: JSON.stringify({ role:"reader", type:"anyone" }),
   });
   return `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
 }
@@ -101,20 +117,22 @@ async function loadFromDrive() {
   if (!files.length) return { records:[], fileId:null };
   const fileId = files[0].id;
   const records = await driveGet(fileId);
-  return { records:Array.isArray(records)?records:[], fileId };
+  return { records: Array.isArray(records) ? records : [], fileId };
 }
 async function loadPublic(fileId) {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${API_KEY}`);
+  const res = await fetch(`https://drive.google.com/uc?export=download&id=${fileId}`);
   if (!res.ok) throw new Error("無法讀取");
   return res.json();
 }
 function getCachedFileId() { try { return localStorage.getItem("act_json_fid"); } catch { return null; } }
 function setCachedFileId(id) { try { localStorage.setItem("act_json_fid", id); } catch {} }
+// ─────────────────────────────────────────────────
 
-function formatDate(d, e) {
-  if (!d) return "";
-  if (!e || e===d) return d;
-  return `${d} ～ ${e}（${Math.round((new Date(e)-new Date(d))/86400000)+1} 天）`;
+function formatDate(date, endDate) {
+  if (!date) return "";
+  if (!endDate || endDate === date) return date;
+  const days = Math.round((new Date(endDate) - new Date(date)) / 86400000) + 1;
+  return `${date} ～ ${endDate}（${days} 天）`;
 }
 function getVideoEmbed(url) {
   const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
@@ -127,8 +145,9 @@ function getVideoThumb(url) {
   const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
   return yt ? `https://img.youtube.com/vi/${yt[1]}/mqdefault.jpg` : null;
 }
+
 function TypeBadge({ type }) {
-  const t = ACTIVITY_TYPES.find(a=>a.key===type)||ACTIVITY_TYPES[5];
+  const t = ACTIVITY_TYPES.find(a=>a.key===type) || ACTIVITY_TYPES[5];
   return <span style={{ fontSize:12, padding:"2px 10px", borderRadius:99, background:BG_COLORS[type]||"#F1EFE8", color:COLORS[type]||"#5F5E5A", fontWeight:500 }}>{t.icon} {t.label}</span>;
 }
 
@@ -139,48 +158,35 @@ const s = {
   field:     { marginBottom:20 },
   back:      { fontSize:14, color:"#888", cursor:"pointer", marginBottom:"1rem", display:"inline-block" },
   filterBtn: (a) => ({ fontSize:13, padding:"5px 14px", borderRadius:99, border:"0.5px solid #ccc", background:a?"#1a1a1a":"transparent", color:a?"#fff":"#666", cursor:"pointer", marginBottom:4 }),
-  thumb:     { width:"100%", aspectRatio:"1", objectFit:"cover", display:"block", borderRadius:8 },
+  thumb:     { width:"100%", aspectRatio:"1", objectFit:"cover", display:"block", borderRadius:8, cursor:"pointer" },
   grid:      { display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))", gap:8, marginTop:12 },
-  detailLbl: { fontSize:14, fontWeight:600, color:"#444", background:"#e8e8e4", display:"inline-block", padding:"2px 10px", borderRadius:6 },
+  detailLbl: { fontSize:14, fontWeight:600, color:"#444", marginBottom:6, background:"#e8e8e4", display:"inline-block", padding:"2px 10px", borderRadius:6 },
 };
 
 function App() {
-  const [records,     setRecords]     = useState([]);
-  const [dataFileId,  setDataFileId]  = useState(null);
-  const [isAdmin,     setIsAdmin]     = useState(false);
-  const [view,        setView]        = useState("list");
-  const [selected,    setSelected]    = useState(null);
-  const [form,        setForm]        = useState(defaultForm);
-  const [filter,      setFilter]      = useState("all");
-  const [sortOrder,   setSortOrder]   = useState("desc");
-  const [lightbox,    setLightbox]    = useState(null);
-  const [addMediaUrl, setAddMediaUrl] = useState("");
-  const [uploading,   setUploading]   = useState(false);
-  const [status,      setStatus]      = useState("");
+  const [records,    setRecords]    = useState([]);
+  const [dataFileId, setDataFileId] = useState(null);
+  const [isAdmin,    setIsAdmin]    = useState(false);
+  const [view,       setView]       = useState("list");
+  const [selected,   setSelected]   = useState(null);
+  const [form,       setForm]       = useState(defaultForm);
+  const [filter,     setFilter]     = useState("all");
+  const [sortOrder,  setSortOrder]  = useState("desc");
+  const [lightbox,   setLightbox]   = useState(null);
+  const [addMediaUrl,setAddMediaUrl]= useState("");
+  const [uploading,  setUploading]  = useState(false);
+  const [status,     setStatus]     = useState("");
   const fileRef  = useRef();
   const coverRef = useRef();
-  const dragIdx  = useRef(null);
-
-  // ── 媒體操作 ──
-  const removeMedia = (idx) => setForm(f => ({ ...f, mediaItems: f.mediaItems.filter((_,i) => i !== idx) }));
-  const onDragStart = (i)   => { dragIdx.current = i; };
-  const onDragOver  = (e)   => { e.preventDefault(); };
-  const onDrop      = (i)   => {
-    if (dragIdx.current === null || dragIdx.current === i) return;
-    const items = [...form.mediaItems];
-    const dragged = items.splice(dragIdx.current, 1)[0];
-    items.splice(i, 0, dragged);
-    setForm(f => ({ ...f, mediaItems: items }));
-    dragIdx.current = null;
-  };
 
   useEffect(() => {
-    const fid = getCachedFileId() || DEFAULT_FILE_ID;
+    const fid = getCachedFileId();
+    if (!fid) return;
     setStatus("載入中...");
     loadPublic(fid)
       .then(r => { setRecords(Array.isArray(r)?r:[]); setDataFileId(fid); })
-      .catch(e => console.log("公開讀取失敗：", e))
-      .finally(() => setStatus(""));
+      .catch(()=>{})
+      .finally(()=>setStatus(""));
   }, []);
 
   const reloadFromDrive = async () => {
@@ -199,14 +205,6 @@ function App() {
       callback: async (resp) => {
         if (resp.error) { alert("登入失敗："+resp.error); return; }
         accessToken = resp.access_token;
-        try {
-          const res  = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", { headers:{ Authorization:`Bearer ${accessToken}` } });
-          const info = await res.json();
-          if (!ADMIN_EMAILS.includes(info.email)) {
-            alert(`帳號 ${info.email} 沒有管理者權限`);
-            accessToken = null; return;
-          }
-        } catch(e) { alert("無法驗證帳號"); accessToken = null; return; }
         setIsAdmin(true);
         await reloadFromDrive();
       },
@@ -264,6 +262,7 @@ function App() {
     catch(err) { alert("上傳失敗："+err.message); }
     setUploading(false);
   };
+  const removeMedia = (idx) => setForm(f=>({...f, mediaItems:f.mediaItems.filter((_,i)=>i!==idx)}));
 
   const years = [...new Set(records.map(r=>r.date?.slice(0,4)).filter(Boolean))].sort((a,b)=>b-a);
   const filtered = (filter==="all" ? records
@@ -295,6 +294,7 @@ function App() {
     );
   }
 
+  // TopBar
   const TopBar = ({ title, backFn }) => (
     <div>
       {backFn && <span style={s.back} onClick={backFn}>← 返回</span>}
@@ -311,43 +311,44 @@ function App() {
     </div>
   );
 
-  // Edit view
+  // Edit
   if (view==="edit") {
     const media = form.mediaItems||[];
     return (
       <div style={s.wrap}>
         <TopBar title={records.find(r=>r.id===form.id)?"編輯紀錄":"新增紀錄"} backFn={()=>setView("list")} />
+
         <div style={s.field}>
-          <label style={s.label}>標題 *</label><br/>
+          <label style={s.label}>標題 *</label>
           <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="例：雪山主峰" />
         </div>
         <div style={s.field}>
-          <label style={s.label}>地點</label><br/>
+          <label style={s.label}>地點</label>
           <input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="例：苗栗縣" />
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:20 }}>
           <div>
-            <label style={s.label}>開始日期 *</label><br/>
+            <label style={s.label}>開始日期 *</label>
             <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} />
           </div>
           <div>
-            <label style={s.label}>結束日期</label><br/>
+            <label style={s.label}>結束日期</label>
             <input type="date" value={form.endDate||""} min={form.date||""} onChange={e=>setForm({...form,endDate:e.target.value})} />
           </div>
           <div>
-            <label style={s.label}>活動類型</label><br/>
+            <label style={s.label}>活動類型</label>
             <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
               {ACTIVITY_TYPES.map(t=><option key={t.key} value={t.key}>{t.icon} {t.label}</option>)}
             </select>
           </div>
         </div>
         <div style={s.field}>
-          <label style={s.label}>同行人員</label><br/>
+          <label style={s.label}>同行人員</label>
           <input value={form.companions||""} onChange={e=>setForm({...form,companions:e.target.value})} placeholder="例：小明、小華、阿偉" />
         </div>
         <div style={s.field}>
-          <label style={s.label}>封面圖片</label><br/>
-          <div style={{ display:"flex", gap:8, alignItems:"center", marginTop:4 }}>
+          <label style={s.label}>封面圖片</label>
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
             <input value={form.imageUrl} onChange={e=>setForm({...form,imageUrl:e.target.value})} placeholder="貼上網址，或上傳到 Google Drive" />
             <button onClick={()=>coverRef.current.click()} disabled={uploading}>上傳</button>
           </div>
@@ -367,37 +368,28 @@ function App() {
             {uploading ? <><span className="spinner"></span>上傳中...</> : "從裝置上傳相片到 Drive"}
           </button>
           {media.length>0 && (
-            <>
-              <p style={{ fontSize:12, color:"#888", marginTop:10 }}>拖曳縮圖可調整順序</p>
-              <div style={s.grid}>
-                {media.map((m,i)=>(
-                  <div key={i}
-                    draggable
-                    onDragStart={()=>onDragStart(i)}
-                    onDragOver={onDragOver}
-                    onDrop={()=>onDrop(i)}
-                    style={{ position:"relative", cursor:"grab", opacity:dragIdx.current===i?0.4:1 }}>
-                    <img src={m.thumb||m.url} style={s.thumb} alt="" />
-                    {m.type==="video" && <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.35)", borderRadius:8 }}><span style={{ fontSize:24, color:"#fff" }}>▶</span></div>}
-                    <div style={{ position:"absolute", top:4, left:4, background:"rgba(0,0,0,0.5)", color:"#fff", fontSize:11, borderRadius:4, padding:"1px 5px" }}>{i+1}</div>
-                    <button onClick={()=>removeMedia(i)} style={{ position:"absolute", top:4, right:4, width:22, height:22, borderRadius:"50%", background:"rgba(0,0,0,0.6)", color:"#fff", border:"none", fontSize:13, lineHeight:"22px", textAlign:"center", padding:0 }}>×</button>
-                  </div>
-                ))}
-              </div>
-            </>
+            <div style={s.grid}>
+              {media.map((m,i)=>(
+                <div key={i} style={{ position:"relative" }}>
+                  <img src={m.thumb||m.url} style={s.thumb} alt="" />
+                  {m.type==="video" && <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.35)", borderRadius:8 }}><span style={{ fontSize:24, color:"#fff" }}>▶</span></div>}
+                  <button onClick={()=>removeMedia(i)} style={{ position:"absolute", top:4, right:4, width:22, height:22, borderRadius:"50%", background:"rgba(0,0,0,0.6)", color:"#fff", border:"none", fontSize:13, lineHeight:"22px", textAlign:"center", padding:0 }}>×</button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
         <div style={s.field}>
-          <label style={s.label}>路線</label><br/>
-          <textarea style={{ height:80, resize:"vertical", marginTop:4 }} value={form.route} onChange={e=>setForm({...form,route:e.target.value})} placeholder="描述行走路線或交通方式..." />
+          <label style={s.label}>路線</label>
+          <textarea style={{ height:80, resize:"vertical" }} value={form.route} onChange={e=>setForm({...form,route:e.target.value})} placeholder="描述行走路線或交通方式..." />
         </div>
         <div style={s.field}>
-          <label style={s.label}>心得</label><br/>
-          <textarea style={{ height:100, resize:"vertical", marginTop:4 }} value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="分享這次活動的感受..." />
+          <label style={s.label}>心得</label>
+          <textarea style={{ height:100, resize:"vertical" }} value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="分享這次活動的感受..." />
         </div>
         <div style={s.field}>
-          <label style={s.label}>標籤（逗號分隔）</label><br/>
-          <input style={{ marginTop:4 }} value={form.tags} onChange={e=>setForm({...form,tags:e.target.value})} placeholder="例：百岳, 三千米, 夜宿山屋" />
+          <label style={s.label}>標籤（逗號分隔）</label>
+          <input value={form.tags} onChange={e=>setForm({...form,tags:e.target.value})} placeholder="例：百岳, 三千米, 夜宿山屋" />
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <button className="primary" onClick={submitForm} disabled={!!status}>儲存</button>
@@ -407,7 +399,7 @@ function App() {
     );
   }
 
-  // Detail view
+  // Detail
   if (view==="detail" && selected) {
     const media = selected.mediaItems||[];
     return (
@@ -438,7 +430,7 @@ function App() {
             <div style={s.detailLbl}>相片 / 影片（{media.length}）</div>
             <div style={s.grid}>
               {media.map((m,i)=>(
-                <div key={i} style={{ position:"relative", cursor:"pointer" }} onClick={()=>setLightbox({items:media,idx:i})}>
+                <div key={i} style={{ position:"relative" }} onClick={()=>setLightbox({items:media,idx:i})}>
                   <img src={m.thumb||m.url} style={s.thumb} alt="" />
                   {m.type==="video" && <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.35)", borderRadius:8 }}><span style={{ fontSize:28, color:"#fff" }}>▶</span></div>}
                 </div>
@@ -446,8 +438,8 @@ function App() {
             </div>
           </div>
         )}
-        {selected.route && <div style={{ marginBottom:16 }}><div style={s.detailLbl}>路線</div><p style={{ fontSize:15, lineHeight:1.8, marginTop:8, whiteSpace:"pre-wrap" }}>{selected.route}</p></div>}
-        {selected.note  && <div style={{ marginBottom:16 }}><div style={s.detailLbl}>心得</div><p style={{ fontSize:15, lineHeight:1.8, marginTop:8, whiteSpace:"pre-wrap" }}>{selected.note}</p></div>}
+        {selected.route && <div style={{ marginBottom:16 }}><div style={s.detailLbl}>路線</div><p style={{ fontSize:15, lineHeight:1.8, marginTop:8 }}>{selected.route}</p></div>}
+        {selected.note  && <div style={{ marginBottom:16 }}><div style={s.detailLbl}>心得</div><p style={{ fontSize:15, lineHeight:1.8, marginTop:8 }}>{selected.note}</p></div>}
         {selected.tags?.length>0 && (
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:16 }}>
             {selected.tags.map(t=><span key={t} style={{ fontSize:12, padding:"3px 10px", borderRadius:99, background:"#f0f0ee", color:"#666", border:"0.5px solid #ddd" }}>#{t}</span>)}
@@ -457,11 +449,17 @@ function App() {
     );
   }
 
-  // List view
+  // List
   return (
     <div style={s.wrap}>
       <TopBar title="我的活動紀錄" />
       {isAdmin && <button className="primary" onClick={openNew} style={{ marginBottom:"1.5rem" }}>＋ 新增</button>}
+      {!isAdmin && records.length===0 && (
+        <div style={{ textAlign:"center", padding:"2rem", background:"#fff", borderRadius:12, marginBottom:"1.5rem", border:"0.5px solid #eee" }}>
+          <p style={{ color:"#888", marginBottom:12 }}>請以管理者身份登入來載入並管理紀錄</p>
+          <button onClick={handleAdminLogin}>管理者登入</button>
+        </div>
+      )}
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:"0.75rem", alignItems:"center" }}>
         <button style={s.filterBtn(filter==="all")} onClick={()=>setFilter("all")}>全部（{records.length}）</button>
         {ACTIVITY_TYPES.map(t=>{ const c=records.filter(r=>r.type===t.key).length; return c>0&&<button key={t.key} style={s.filterBtn(filter===t.key)} onClick={()=>setFilter(t.key)}>{t.icon} {t.label}（{c}）</button>; })}
